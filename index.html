@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résultats Électoraux - Saône-et-Loire</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; flex-direction: row; }
+        #sidebar { width: 350px; background: #ffffff; padding: 20px; box-shadow: 2px 0 10px rgba(0,0,0,0.2); z-index: 1000; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        #map { flex-grow: 1; height: 100%; background-color: #e5e3df; }
+        h1 { font-size: 1.2rem; color: #333; margin: 0 0 10px 0; text-align: center; }
+        label { font-size: 0.9rem; color: #555; margin-bottom: -10px; display: block;}
+        select, input, button { width: 100%; padding: 10px; margin-bottom: 5px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.9rem; box-sizing: border-box; }
+        .select-group { display: flex; flex-direction: column; gap: 5px; }
+        select:disabled { background-color: #e9ecef; color: #6c757d; cursor: not-allowed; }
+        .button-group { display: flex; gap: 5px; flex-wrap: wrap; justify-content: space-between; }
+        .button-group button { flex: 0 1 18%; min-width: 18%; cursor: pointer; background-color: #f0f0f0; border: 1px solid #bbb; padding: 10px 0; }
+        .button-group button:hover { background-color: #e0e0e0; }
+        #result-box { margin-top: 10px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 5px solid #005A9C; display: none; }
+        #result-box h2 { font-size: 1.1rem; margin-top: 0; color: #005A9C; }
+        .bar-chart { background: #ddd; height: 20px; border-radius: 3px; margin-bottom: 5px; position: relative; }
+        .bar-fill { height: 100%; border-radius: 3px; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column-reverse; } 
+            #sidebar { width: 100%; height: 50vh; box-sizing: border-box; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); }
+            #map { height: 50vh; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h1>🗳️ Élections en Saône-et-Loire</h1>
+        <input type="text" placeholder="Rechercher une commune..." disabled>
+        
+        <div class="select-group">
+            <label><b>Type d'élection :</b></label>
+            <select id="election-type">
+                <option value="pres2017">Présidentielles 2017</option>
+                <option value="leg2017">Législatives 2017</option>
+                <option value="euro2019">Européennes 2019</option>
+                <option value="muni2020">Municipales 2020</option>
+                <option value="senat2020">Sénatoriales 2020</option>
+                <option value="dep2021">Départementales 2021</option>
+                <option value="reg2021">Régionales 2021</option>
+                <option value="pres2022">Présidentielles 2022</option>
+                <option value="leg2022">Législatives 2022</option>
+                <option value="euro2024">Européennes 2024</option>
+                <option value="leg2024">Législatives 2024</option>
+                <option value="legpart2025">Législatives partielles 5ème circo 2025</option>
+                <option value="muni2026">Municipales 2026</option>
+            </select>
+
+            <label><b>Tour :</b></label>
+            <select id="election-tour">
+                <option value="1">1er Tour</option>
+                <option value="2">2ème Tour</option>
+            </select>
+        </div>
+
+        <label><b>Échelle d'affichage :</b></label>
+        <div class="button-group">
+            <button>Bureaux</button>
+            <button>Communes</button>
+            <button>Cantons</button>
+            <button>Circos.</button>
+            <button>Département</button>
+        </div>
+
+        <div id="result-box">
+            <h2 id="nom-zone">Cliquez sur une zone</h2>
+            <p style="margin: 0; font-size: 0.9rem;">Participation : <b id="part-zone">--%</b></p>
+            <hr style="border: 0; border-top: 1px solid #ccc; margin: 10px 0;">
+            <div id="graph-zone"></div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var sudOuest = L.latLng(46.10, 3.65);
+        var nordEst = L.latLng(47.15, 5.50);
+        var limites71 = L.latLngBounds(sudOuest, nordEst);
+
+        var map = L.map('map', {
+            center: [46.67, 4.54], zoom: 9, minZoom: 8, maxBounds: limites71, maxBoundsViscosity: 1.0 
+        });
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 20
+        }).addTo(map);
+
+        const selectElection = document.getElementById('election-type');
+        const selectTour = document.getElementById('election-tour');
+
+        selectElection.addEventListener('change', function() {
+            const choix = this.value;
+            if (choix.includes('euro') || choix.includes('senat')) {
+                selectTour.value = "1"; selectTour.options[1].disabled = true;
+            } else {
+                selectTour.options[1].disabled = false;
+            }
+        });
+
+        var fauxBureau = L.polygon([[46.91, 4.97], [46.91, 4.99], [46.89, 4.99], [46.89, 4.97]], {
+            color: '#0A3161', fillOpacity: 0.5, weight: 2
+        }).addTo(map);
+
+        fauxBureau.on('mouseover', function () {
+            this.setStyle({ weight: 4, fillOpacity: 0.7 });
+            this.bindTooltip("Allerey-sur-Saône - Bureau 1<br><i>Cliquez pour les détails</i>").openTooltip();
+        });
+
+        fauxBureau.on('mouseout', function () {
+            this.setStyle({ weight: 2, fillOpacity: 0.5 });
+            this.closeTooltip();
+        });
+
+        fauxBureau.on('click', function () {
+            document.getElementById('result-box').style.display = 'block';
+            document.getElementById('nom-zone').innerText = "Allerey-sur-Saône (Bureau 1)";
+            document.getElementById('part-zone').innerText = "84.5%";
+            
+            let resultHTML = `
+                <div style="margin-bottom: 10px;">
+                    <span>LE PEN (36.4%)</span>
+                    <div class="bar-chart"><div class="bar-fill" style="width: 36.4%; background: #0A3161;"></div></div>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <span>MACRON (15.5%)</span>
+                    <div class="bar-chart"><div class="bar-fill" style="width: 15.5%; background: #FFB400;"></div></div>
+                </div>
+            `;
+            document.getElementById('graph-zone').innerHTML = resultHTML;
+        });
+    </script>
+</body>
+</html>
